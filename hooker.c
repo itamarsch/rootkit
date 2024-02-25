@@ -13,11 +13,11 @@ struct callback {
 };
 
 struct callback register_callback(void (*callback)(void),
-                                  void (*targeted)(void),
-                                  size_t targeted_size) {
+                                  void (*targeted)(void), size_t targeted_size,
+                                  size_t noop_padding_size) {
 
-  // Copied from the internet don't relly know why this make the code segement
-  // writable
+  // Copied from the internet
+  // don't realy know why this make the code segement writable
   size_t pagesize = sysconf(_SC_PAGESIZE);
   void *page_start = (void *)((uintptr_t)targeted & ~(pagesize - 1));
   if (mprotect(page_start, pagesize, PROT_READ | PROT_WRITE | PROT_EXEC) ==
@@ -26,12 +26,11 @@ struct callback register_callback(void (*callback)(void),
     exit(EXIT_FAILURE);
   }
 
-  unsigned char *targeted_ptr = (unsigned char *)targeted;
+  char *targeted_ptr = (char *)targeted;
 
   struct callback target_callback = {0};
 
-  // Selected by random until it worked :)
-  size_t offset = 5;
+  size_t offset = 5 + noop_padding_size;
 
   target_callback.size_of_data = targeted_size + offset;
 
@@ -45,17 +44,19 @@ struct callback register_callback(void (*callback)(void),
 
   int inserted = 0;
 
-  targeted_ptr[0] = 0xE8;
-
+  const char call = 0xE8;
+  targeted_ptr[0] = call;
   inserted++;
 
-  *((int *)(targeted_ptr + inserted)) = callback - targeted - 5;
-
+  *((int *)(targeted_ptr + inserted)) = callback - (targeted + inserted + 4); //
   inserted += 4;
 
+  const char noop = 0x90;
   for (int i = inserted; i < offset; i++) {
-    targeted_ptr[i] = 0x90;
+    targeted_ptr[i] = noop;
+    inserted += 1;
   }
+
   return target_callback;
 }
 
@@ -73,7 +74,8 @@ void foo() { printf("foo\n"); }
 void hello(void) { printf("Hello\n"); }
 
 int main(void) {
-  struct callback hello_callback = register_callback(&hello, &modified, 0x19);
+  struct callback hello_callback = register_callback(
+      &hello, &modified, 0x19, 1 /* Selected randomly until it worked */);
 
   modified();
 
