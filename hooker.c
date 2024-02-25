@@ -12,8 +12,8 @@ struct callback {
   void *address_of_callback;
 };
 
-struct callback register_callback(void (*callback)(void),
-                                  void (*targeted)(void), size_t targeted_size,
+struct callback register_callback(void *callback, void *targeted,
+                                  size_t targeted_size,
                                   size_t noop_padding_size) {
 
   // Copied from the internet
@@ -25,8 +25,6 @@ struct callback register_callback(void (*callback)(void),
     perror("mprotect");
     exit(EXIT_FAILURE);
   }
-
-  char *targeted_ptr = (char *)targeted;
 
   struct callback target_callback = {0};
 
@@ -40,20 +38,23 @@ struct callback register_callback(void (*callback)(void),
 
   target_callback.address_of_callback = targeted;
 
-  memmove(targeted_ptr + offset, targeted_ptr, targeted_size);
+  memmove(targeted + offset, targeted, targeted_size);
+
+  unsigned char *targeted_bytes_arr = (unsigned char *)targeted;
 
   int inserted = 0;
 
-  const char call = 0xE8;
-  targeted_ptr[0] = call;
+  const unsigned char call = 0xE8;
+  targeted_bytes_arr[0] = call;
   inserted++;
 
-  *((int *)(targeted_ptr + inserted)) = callback - (targeted + inserted + 4); //
+  *(size_t *)(targeted + inserted) =
+      callback - (targeted + inserted + 4); // Add 4 for address
   inserted += 4;
 
-  const char noop = 0x90;
+  const unsigned char noop = 0x90;
   for (int i = inserted; i < offset; i++) {
-    targeted_ptr[i] = noop;
+    targeted_bytes_arr[i] = noop;
     inserted += 1;
   }
 
