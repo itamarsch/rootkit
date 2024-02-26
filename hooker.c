@@ -12,31 +12,54 @@ struct callback {
   void *address_of_callback;
 };
 
+void *get_page_start_address(void *ptr, size_t pagesize) {
+  return (void *)((uintptr_t)ptr & ~(pagesize - 1));
+}
+
+void page_read_write_exec(void *ptr) {
+
+  const size_t pagesize = sysconf(_SC_PAGESIZE);
+  void *page_start = get_page_start_address(ptr, pagesize);
+
+  int mprotect_err =
+      mprotect(page_start, pagesize, PROT_READ | PROT_WRITE | PROT_EXEC);
+
+  if (mprotect_err == -1) {
+    printf("Failed mprotect EXEC");
+    exit(EXIT_FAILURE);
+  }
+}
+
+void page_read_exec(void *ptr) {
+
+  size_t pagesize = sysconf(_SC_PAGESIZE);
+  void *page_start = get_page_start_address(ptr, pagesize);
+
+  int mprotect_err = mprotect(page_start, pagesize, PROT_READ | PROT_EXEC);
+
+  if (mprotect_err == -1) {
+    printf("Failed mprotect EXEC");
+    exit(EXIT_FAILURE);
+  }
+}
+
 struct callback register_callback(void *callback, void *targeted,
                                   size_t targeted_size,
                                   size_t noop_padding_size) {
 
-  // Copied from the internet
-  // don't realy know why this make the code segement writable
-  size_t pagesize = sysconf(_SC_PAGESIZE);
-  void *page_start = (void *)((uintptr_t)targeted & ~(pagesize - 1));
-  if (mprotect(page_start, pagesize, PROT_READ | PROT_WRITE | PROT_EXEC) ==
-      -1) {
-    perror("mprotect");
-    exit(EXIT_FAILURE);
-  }
+  page_read_write_exec(targeted);
 
   struct callback target_callback = {0};
 
   size_t offset = 5 + noop_padding_size;
 
   target_callback.size_of_data = targeted_size + offset;
+  target_callback.address_of_callback = targeted;
 
   target_callback.data_before_callback = malloc(target_callback.size_of_data);
+
   memcpy(target_callback.data_before_callback, targeted,
          target_callback.size_of_data);
-
-  target_callback.address_of_callback = targeted;
 
   memmove(targeted + offset, targeted, targeted_size);
 
@@ -58,12 +81,18 @@ struct callback register_callback(void *callback, void *targeted,
     inserted += 1;
   }
 
+  page_read_exec(targeted);
+
   return target_callback;
 }
 
 void unregister(struct callback clbck) {
+  page_read_write_exec(clbck.address_of_callback);
+
   memcpy(clbck.address_of_callback, clbck.data_before_callback,
          clbck.size_of_data);
+
+  page_read_exec(clbck.address_of_callback);
 
   free(clbck.data_before_callback);
 }
