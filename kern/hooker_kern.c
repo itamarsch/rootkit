@@ -4,9 +4,13 @@
 #include <linux/kprobes.h>
 #include <linux/module.h>
 
-#include "./retrieve_kallsyms.c"
+struct callback {
+  void *data_before_callback;
+  size_t size_of_data;
+  void *address_of_callback;
+};
 
-void make_function_writable(void *addr) {
+void remove_write_protection(void) {
   unsigned int cr0_register;
 
   asm volatile("mov %%cr0, %0" : "=r"(cr0_register));
@@ -16,38 +20,100 @@ void make_function_writable(void *addr) {
   asm volatile("mov %0, %%cr0" : : "r"(cr0_register));
 }
 
-void modified(void) { printk(KERN_INFO "world\n"); }
+struct callback register_callback(void *callback, void *targeted,
+                                  size_t targeted_size,
+                                  size_t noop_padding_size) {
 
-void hello(void) { printk(KERN_INFO "Hello\n"); }
+  struct callback target_callback = {0};
 
-static int __init hooker_init(void) {
+  size_t offset = 5 + noop_padding_size;
 
-  kln_p kln_pointer = get_kln_p();
-  printk(KERN_INFO "kln_pointer = 0x%lx\n", (unsigned long)kln_pointer);
+  target_callback.size_of_data = targeted_size + offset;
+  target_callback.address_of_callback = targeted;
 
-  int (*set_memory_rox)(unsigned long addr, int numpages) =
-      (int (*)(unsigned long addr, int numpages))kln_pointer("set_memory_rox");
-  printk(KERN_INFO "set_memory_rox = 0x%lx\n", (unsigned long)set_memory_rox);
+  target_callback.data_before_callback =
+      kmalloc(target_callback.size_of_data, GFP_KERNEL);
 
-  void (*modified_addr)(void) = &modified;
+  memcpy(target_callback.data_before_callback, targeted,
+         target_callback.size_of_data);
 
-  make_function_writable(modified_addr);
+  remove_write_protection();
+  memmove(targeted + offset, targeted, targeted_size);
 
-  memmove(modified_addr + 3, modified_addr, 0x19);
-  printk(KERN_INFO "Move");
+  unsigned char *targeted_bytes_arr = (unsigned char *)targeted;
 
-  void (*modified_addr_new)(void) = (void (*)(void))(modified_addr + 3);
-  unsigned long base = (unsigned long)modified_addr_new & PAGE_MASK;
-  int pages = PAGE_ALIGN(0x19) / PAGE_SIZE;
+  const unsigned char call = 0xE8;
+  remove_write_protection();
 
-  if (set_memory_rox((unsigned long)base, pages) != 0) {
-    pr_err("set_memory_ro failed\n");
-    return 0;
+  size_t rel_address = (size_t)(callback - (targeted + 5));
+
+  printk("Rel address: %zu\n", rel_address);
+
+  remove_write_protection();
+  targeted_bytes_arr[0] = call;
+  *(size_t *)(targeted_bytes_arr + 1) = rel_address;
+
+  unsigned long inserted = 5;
+
+  const unsigned char noop = 0x90;
+  for (int i = inserted; i < offset; i++) {
+    remove_write_protection();
+    targeted_bytes_arr[i] = noop;
+    inserted += 1;
   }
 
-  pr_info("set_memory_rw succeeded\n");
+  return target_callback;
+}
+void unregister(struct callback clbck) {
 
-  (modified_addr_new)();
+  remove_write_protection();
+  memcpy(clbck.address_of_callback, clbck.data_before_callback,
+         clbck.size_of_data);
+
+  kfree(clbck.data_before_callback);
+}
+void modified(void) { printk(KERN_INFO "world\n"); }
+
+void foo(void) { printk(KERN_INFO "foo\n"); }
+
+void hello(void) {
+  printk(KERN_INFO "Hello\n");
+  printk(KERN_INFO "Hello\n");
+  printk(KERN_INFO "Hello\n");
+  printk(KERN_INFO "Hello\n");
+  return;
+}
+static int __init hooker_init(void) {
+
+  const size_t modified_size = 0x19;
+  const size_t noop_slot_size = 3;
+
+  for (int i = 0; i < modified_size; i++) {
+
+    printk("%x\n", *(char *)(&modified + i));
+  }
+
+  printk(KERN_INFO "-------------Register-------------\n");
+
+  printk("Hello: %p\n", &hello);
+  printk("Modified: %p\n", &modified);
+
+  struct callback hello_callback =
+      register_callback(&hello, &modified, modified_size,
+                        noop_slot_size /* Selected randomly until it worked */);
+
+  for (int i = 0; i < modified_size + noop_slot_size + 5; i++) {
+    printk("%x \n", *(char *)(modified + i));
+  }
+
+  modified();
+  unregister(hello_callback);
+
+  printk(KERN_INFO "-------------Unregister-------------\n");
+
+  modified();
+
+  foo();
 
   return 0;
 }
