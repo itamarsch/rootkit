@@ -7,7 +7,7 @@
 struct callback {
   void *data_before_callback;
   size_t size_of_data;
-  void *address_of_callback;
+  void *address_of_target;
 };
 
 void remove_write_protection(void) {
@@ -29,7 +29,7 @@ struct callback register_callback(void *callback, void *targeted,
   size_t offset = 5 + noop_padding_size;
 
   target_callback.size_of_data = targeted_size + offset;
-  target_callback.address_of_callback = targeted;
+  target_callback.address_of_target = targeted;
 
   target_callback.data_before_callback =
       kmalloc(target_callback.size_of_data, GFP_KERNEL);
@@ -49,11 +49,14 @@ struct callback register_callback(void *callback, void *targeted,
 
   printk("Rel address: %zu\n", rel_address);
 
-  remove_write_protection();
-  targeted_bytes_arr[0] = call;
-  *(size_t *)(targeted_bytes_arr + 1) = rel_address;
+  unsigned long inserted = 0;
 
-  unsigned long inserted = 5;
+  remove_write_protection();
+  targeted_bytes_arr[inserted] = call;
+  inserted++;
+
+  *(size_t *)(targeted_bytes_arr + inserted) = rel_address;
+  inserted += 4;
 
   const unsigned char noop = 0x90;
   for (int i = inserted; i < offset; i++) {
@@ -67,7 +70,7 @@ struct callback register_callback(void *callback, void *targeted,
 void unregister(struct callback clbck) {
 
   remove_write_protection();
-  memcpy(clbck.address_of_callback, clbck.data_before_callback,
+  memcpy(clbck.address_of_target, clbck.data_before_callback,
          clbck.size_of_data);
 
   kfree(clbck.data_before_callback);
