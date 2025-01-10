@@ -15,4 +15,5 @@ all:
 
 # Clean target to remove build artifacts
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	rm -f *.o *.ko *.mod *.mod.c modules.order Module.symvers .*.cmd
+	rm -rf .tmp_versions

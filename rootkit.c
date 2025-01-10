@@ -1,78 +1,61 @@
 // hello_world.c
 #include <linux/kprobes.h>
 #include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/dirent.h>
-#include <linux/uaccess.h>
-#include <asm/pgtable.h>    // {clear,set}_pte_bit(), set_pte()
-#include "asm/unistd_64.h"
-#include "get_kln.h"
 
-// Module information
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Your Name");
 MODULE_DESCRIPTION("A simple Hello World Kernel Module");
 
-typedef asmlinkage long (mkdir_t)(char* __user, umode_t);
 
-mkdir_t* original_mkdir;
-kln_p k;  
-void** table;
+struct kretprobe kp;
 
-static asmlinkage long my_mkdir(char* __user name, umode_t mode) {
-  printk(KERN_INFO "My mkdir!!\n");
+static int syscall_entry(struct kretprobe_instance* k , struct pt_regs* regs){
+  struct pt_regs* syscall_regs = (struct pt_regs*)regs->di;
+
+  int syscall_number = *(int*) &syscall_regs->orig_ax;
+  /* printk(KERN_INFO "Syscal ran: %d\n",syscall_number); */
+  if (syscall_number == 83) {
+    printk(KERN_INFO "Mkdir ran: %d\n",syscall_number);
+  }
+
+  /* char* __user pathname = (char* )syscall_regs->di; */
+  /* char buf[256]; */
+  /* long n = strncpy_from_user(buf, pathname, 256); */
+  /* printk(KERN_INFO "%ld %s\n",n,buf); */
+  /* if (strcmp(buf,"hello") == 0) { */
+  /*   int n = copy_to_user(pathname, "hi", 3); */
+  /*   printk(KERN_INFO "Copying hi :) %d\n",n); */
+  /* } */
+
+  
 
   return 0;
 }
 
-
-static void disable_page_protection(void) {
-
-    unsigned long value;
-    asm volatile("mov %%cr0,%0" : "=r" (value));
-    if (value & 0x00010000) {
-            value &= ~0x00010000;
-            asm volatile("mov %0,%%cr0": : "r" (value));
-    }
-}
-
-static void enable_page_protection(void) {
-
-    unsigned long value;
-    asm volatile("mov %%cr0,%0" : "=r" (value));
-    if (!(value & 0x00010000)) {
-            value |= 0x00010000;
-            asm volatile("mov %0,%%cr0": : "r" (value));
-    }
+static int syscall_exit(struct kretprobe_instance* k , struct pt_regs* regs) {
+  return 0;
 }
 
 static int __init hello_world_init(void) {
-  
-  k =  get_kln_p();
-  table = (void**) k("sys_call_table");
+  kp.kp.symbol_name = "x64_sys_call";
+  kp.data_size = 0;
+  kp.maxactive = 1000;
+
+  kp.entry_handler = &syscall_entry;
+  kp.handler = &syscall_exit;
 
 
-  printk(KERN_INFO "%p, %p",table[__NR_mkdir], &my_mkdir);
-
-  original_mkdir = table[__NR_mkdir];
-  disable_page_protection(); 
-  table[__NR_mkdir] = (void*) &my_mkdir; 
-  enable_page_protection(); 
-  printk(KERN_INFO "%p",table[__NR_mkdir]);
-  ((mkdir_t*) table[__NR_mkdir])("",0);
-
-  printk("TABLE %p", original_mkdir);
+  if(register_kretprobe(&kp) != 0) {
+    printk(KERN_INFO "Failed kprobing on mkdir");
+  }
 
   return 0; 
 }
 
 static void __exit hello_world_exit(void) {
 
+  unregister_kretprobe(&kp);
 
-  disable_page_protection(); 
-  table[__NR_mkdir] = (unsigned long*) original_mkdir; 
-  enable_page_protection(); 
   printk(KERN_INFO "Goodbye, world! The module is being unloaded.\n");
 }
 
