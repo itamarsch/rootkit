@@ -39,7 +39,7 @@ ssh "$REMOTE_USER@$REMOTE_HOST" << EOF
 
 
     echo "Checking kernel messages..."
-    sudo dmesg | tail -n 20
+    sudo dmesg -w
 EOF
 
 echo "Operation completed."
