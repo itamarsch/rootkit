@@ -36,7 +36,7 @@ static int syscall_exit(struct kretprobe_instance* k , struct pt_regs* regs) {
   return 0;
 }
 
-static int __init hello_world_init(void) {
+static int __init rootkit_enter(void) {
   kp.kp.symbol_name = "x64_sys_call";
   kp.data_size = 0;
   kp.maxactive = 1000;
@@ -52,12 +52,12 @@ static int __init hello_world_init(void) {
   return 0; 
 }
 
-static void __exit hello_world_exit(void) {
+static void __exit rootkit_exit(void) {
 
   unregister_kretprobe(&kp);
 
   printk(KERN_INFO "Goodbye, world! The module is being unloaded.\n");
 }
 
-module_init(hello_world_init);
-module_exit(hello_world_exit);
+module_init(rootkit_enter);
+module_exit(rootkit_exit);
