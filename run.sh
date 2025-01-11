@@ -5,7 +5,7 @@ MODULE_NAME="rootkit"
 MODULE_FILE="${MODULE_NAME}.ko"
 MODULE_FILE_PATH="./bin/${MODULE_NAME}.ko"
 REMOTE_USER="itamarsch"
-REMOTE_HOST="192.168.0.24"
+REMOTE_HOST="192.168.0.99"
 REMOTE_DIR="/tmp" # Directory on the remote machine to transfer the .ko file
 
 # Color codes
