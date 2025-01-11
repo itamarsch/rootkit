@@ -1,3 +1,6 @@
+#include <linux/kprobes.h>
+#include <linux/module.h>
+
 #define KPROBE_PRE_HANDLER(fname)                                              \
   static int __kprobes fname(struct kprobe *p, struct pt_regs *regs)
 
@@ -8,7 +11,8 @@ unsigned long (*kln_pointer)(const char *name) = NULL;
 
 static struct kprobe kp0, kp1;
 
-KPROBE_PRE_HANDLER(handler_pre0) {
+static int __attribute__((__section__(".kprobes.text")))
+handler_pre0(struct kprobe *p, struct pt_regs *regs) {
   kln_addr = (--regs->ip);
 
   return 0;
@@ -38,6 +42,7 @@ static int do_register_kprobe(struct kprobe *kp, char *symbol_name,
 
 // this is the function that I have modified, as the name suggests it returns a
 // pointer to the extracted kallsyms_lookup_name function
+kln_p get_kln_p(void);
 kln_p get_kln_p(void) {
   int status;
 
@@ -57,7 +62,7 @@ kln_p get_kln_p(void) {
   unregister_kprobe(&kp0);
   unregister_kprobe(&kp1);
 
-  pr_info("kallsyms_lookup_name address = 0x%lx\n", kln_addr);
+  printk(KERN_INFO "kallsyms_lookup_name address = 0x%lx\n", kln_addr);
 
   kln_pointer = (unsigned long (*)(const char *name))kln_addr;
 

@@ -3,16 +3,9 @@
 
 #pragma once
 
-enum syscall {
-  UNKNOWN,
-  KILL,
-  OPEN
-};
+enum syscall { UNKNOWN, KILL, OPEN };
 
-
-
-struct unknown_metadata {
-};
+struct unknown_metadata {};
 
 struct open_metadata {
   bool should_fail;
@@ -25,7 +18,7 @@ union metadata {
 
 struct syscall_metadata {
   enum syscall syscall;
-  union metadata metadata; 
+  union metadata metadata;
 };
 
 void free_syscall_metadata(struct syscall_metadata syscall_metadata);
@@ -37,4 +30,4 @@ void free_syscall_metadata(struct syscall_metadata syscall_metadata) {
   case UNKNOWN:
     break;
   }
-} 
+}
