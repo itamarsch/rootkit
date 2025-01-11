@@ -8,43 +8,50 @@ REMOTE_USER="itamarsch"
 REMOTE_HOST="192.168.0.24"
 REMOTE_DIR="/tmp" # Directory on the remote machine to transfer the .ko file
 
-read -s -p "Enter sudo password for $REMOTE_USER@$REMOTE_HOST: " SUDO_PASSWORD
+# Color codes
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+BLUE="\033[0;34m"
+RESET="\033[0m"
+
+read -s -p "$(echo -e "${YELLOW}Enter sudo password for $REMOTE_USER@$REMOTE_HOST:${RESET} ")" SUDO_PASSWORD
 echo
 
 # Build the kernel module
-echo "Building the kernel module..."
+echo -e "${BLUE}Building the kernel module...${RESET}"
 make || {
-  echo "Make failed. Exiting."
+  echo -e "${RED}Make failed. Exiting.${RESET}"
   exit 1
 }
 
 # Check if the module file was created
 if [[ ! -f $MODULE_FILE_PATH ]]; then
-  echo "Module file $MODULE_FILE not found. Exiting."
+  echo -e "${RED}Module file $MODULE_FILE not found. Exiting.${RESET}"
   exit 1
 fi
 
 # Copy the .ko file to the remote machine
-echo "Copying $MODULE_FILE to $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR..."
+echo -e "${BLUE}Copying $MODULE_FILE to $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR...${RESET}"
 scp "$MODULE_FILE_PATH" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR" || {
-  echo "SCP failed. Exiting."
+  echo -e "${RED}SCP failed. Exiting.${RESET}"
   exit 1
 }
 
 # SSH into the remote machine, insmod the .ko file, and output dmesg
-echo "Logging into $REMOTE_HOST to load the module..."
+echo -e "${BLUE}Logging into $REMOTE_HOST to load the module...${RESET}"
 ssh "$REMOTE_USER@$REMOTE_HOST" <<EOF
-    echo "Switching to $REMOTE_DIR..."
-    cd "$REMOTE_DIR" || { echo "Failed to switch to $REMOTE_DIR. Exiting."; exit 1; }
+    echo -e "${BLUE}Switching to $REMOTE_DIR...${RESET}"
+    cd "$REMOTE_DIR" || { echo -e "${RED}Failed to switch to $REMOTE_DIR. Exiting.${RESET}"; exit 1; }
 
     echo "$SUDO_PASSWORD" | sudo -S rmmod $MODULE_NAME
 
-    echo "Inserting module $MODULE_FILE..."
-    sudo insmod "$MODULE_FILE" || { echo "Failed to insert module. Exiting."; exit 1; }
+    echo -e "${GREEN}Inserting module $MODULE_FILE...${RESET}"
+    sudo insmod "$MODULE_FILE" || { echo -e "${RED}Failed to insert module. Exiting.${RESET}"; exit 1; }
 
-
-    echo "Checking kernel messages..."
+    echo -e "${BLUE}Checking kernel messages...${RESET}"
+    sudo dmesg --clear
     sudo dmesg -w
 EOF
 
-echo "Operation completed."
+echo -e "${GREEN}Operation completed.${RESET}"

