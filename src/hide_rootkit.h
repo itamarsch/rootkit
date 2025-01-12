@@ -1,5 +1,3 @@
 #include <linux/module.h>
 
-void hideme(void);
-void showme(void);
-void hide_handler(struct pt_regs *syscall_regs);
+void sys_kill_kprobe_enter_handler(int sig, int pid);

