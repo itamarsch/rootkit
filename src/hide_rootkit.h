@@ -1,3 +1,3 @@
 #include <linux/module.h>
 
-void sys_kill_kprobe_enter_handler(int sig, int pid);
+void kill_syscall_enter_handler(int sig, int pid);
