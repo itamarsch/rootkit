@@ -5,7 +5,7 @@ MODULE_NAME="rootkit"
 MODULE_FILE="${MODULE_NAME}.ko"
 MODULE_FILE_PATH="./bin/${MODULE_NAME}.ko"
 REMOTE_USER="itamarsch"
-REMOTE_HOST="192.168.0.99"
+REMOTE_HOST="172.20.10.3"
 REMOTE_DIR="/tmp" # Directory on the remote machine to transfer the .ko file
 
 # Color codes
@@ -20,7 +20,7 @@ echo
 
 # Build the kernel module
 echo -e "${BLUE}Building the kernel module...${RESET}"
-make || {
+./build_module.sh || {
   echo -e "${RED}Make failed. Exiting.${RESET}"
   exit 1
 }
